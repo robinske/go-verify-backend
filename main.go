@@ -111,9 +111,11 @@ func CheckVerification(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	port := os.Getenv("PORT")
+
 	router := mux.NewRouter()
 
 	router.HandleFunc("/start", StartVerification).Methods("POST")
 	router.HandleFunc("/check", CheckVerification).Methods("POST")
-	log.Fatal(http.ListenAndServe(":8081", router))
+	log.Fatal(http.ListenAndServe(":"+port, router))
 }
