@@ -41,7 +41,11 @@ func StartVerification(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(reqErr)
 	}
 
-	req.Header.Add("X-Authy-API-Key", os.Getenv("AUTHY_API_KEY"))
+	api_key := os.Getenv("AUTHY_API_KEY")
+	if api_key == "" {
+		log.Fatal("$AUTHY_API_KEY must be set")
+	}
+	req.Header.Add("X-Authy-API-Key", api_key)
 
 	res, err := client.Do(req)
 	if err != nil {
@@ -112,6 +116,9 @@ func CheckVerification(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	port := os.Getenv("PORT")
+	if port == "" {
+		log.Fatal("$PORT must be set")
+	}
 
 	router := mux.NewRouter()
 
