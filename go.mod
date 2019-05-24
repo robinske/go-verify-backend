@@ -1,6 +1,6 @@
 module github.com/heroku/go-verify-backend
 
-go 1.12
+// +heroku goVersion go1.12.5
 
 require (
 	github.com/gorilla/mux v1.7.2
