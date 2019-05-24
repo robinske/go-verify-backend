@@ -43,7 +43,9 @@ func StartVerification(w http.ResponseWriter, r *http.Request) {
 
 	api_key := os.Getenv("AUTHY_API_KEY")
 	if api_key == "" {
-		log.Fatal("$AUTHY_API_KEY must be set")
+		response := &VerifyResponse{"$AUTHY_API_KEY must be set", false}
+		json.NewEncoder(w).Encode(response)
+		return
 	}
 	req.Header.Add("X-Authy-API-Key", api_key)
 
