@@ -1,0 +1,11 @@
+{
+  "name": "Twilio Verify backend server",
+  "description": "Sample backend server for working with the Verify API written in golang",
+  "keywords": [
+    "go",
+    "verify",
+    "authy",
+    "twilio"
+  ],
+  "repository": "http://github.com/robinske/go-verify-backend"
+}
