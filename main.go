@@ -2,52 +2,48 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
 )
 
 type VerifyResponse struct {
 	Message string `json:"message"`
-	Success bool   `json:"success"`
+	Success bool   `json:"status"`
+}
+
+type ApiResponse struct {
+	Sid    string `json:"sid"`
+	Status string `json:"status"`
+	To     string `json:"to"`
 }
 
 func StartVerification(w http.ResponseWriter, r *http.Request) {
 	via := r.FormValue("via")
 	phoneNumber := r.FormValue("phone_number")
 	countryCode := r.FormValue("country_code")
+	fullPhone := fmt.Sprintf("+%s%s", countryCode, phoneNumber)
 
-	reqUrl := "https://api.authy.com/protected/json/phones/verification/start"
+	reqUrl := fmt.Sprintf("https://verify.twilio.com/v2/Services/%s/Verifications", os.Getenv("VERIFY_SERVICE_SID"))
 
-	client := http.Client{Timeout: time.Second * 2}
+	client := &http.Client{}
 
 	data := url.Values{}
-	data.Add("via", via)
-	data.Add("phone_number", phoneNumber)
-	data.Add("country_code", countryCode)
+	data.Add("Channel", via)
+	data.Add("To", fullPhone)
 
-	req, reqErr := http.NewRequest(
-		http.MethodPost,
-		reqUrl,
-		strings.NewReader(data.Encode()))
+	req, err := http.NewRequest(http.MethodPost, reqUrl, strings.NewReader(data.Encode()))
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
-	if reqErr != nil {
-		log.Fatal(reqErr)
-	}
-
-	api_key := os.Getenv("AUTHY_API_KEY")
-	if api_key == "" {
-		response := &VerifyResponse{"$AUTHY_API_KEY must be set", false}
-		json.NewEncoder(w).Encode(response)
-		return
-	}
-	req.Header.Add("X-Authy-API-Key", api_key)
+	ACCOUNT_SID := os.Getenv("TWILIO_ACCOUNT_SID")
+	AUTH_TOKEN := os.Getenv("TWILIO_AUTH_TOKEN")
+	req.SetBasicAuth(ACCOUNT_SID, AUTH_TOKEN)
 
 	res, err := client.Do(req)
 	if err != nil {
@@ -59,42 +55,47 @@ func StartVerification(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(ioErr)
 	}
 
-	response := VerifyResponse{}
-	jsonErr := json.Unmarshal(bodyBytes, &response)
-
-	if jsonErr != nil {
-		log.Fatal(jsonErr)
+	if res.StatusCode != 201 {
+		response := &VerifyResponse{string(bodyBytes), false}
+		json.NewEncoder(w).Encode(response)
+		return
 	}
 
-	json.NewEncoder(w).Encode(response)
+	apiResponse := ApiResponse{}
+	jsonErr := json.Unmarshal(bodyBytes, &apiResponse)
+
+	if jsonErr != nil {
+		log.Print(jsonErr)
+	}
+
+	if apiResponse.Status == "pending" {
+		response := &VerifyResponse{fmt.Sprintf("Token sent to %s", apiResponse.To), true}
+		json.NewEncoder(w).Encode(response)
+	} else {
+		log.Fatal("Error sending verification token")
+	}
 }
 
 func CheckVerification(w http.ResponseWriter, r *http.Request) {
 	code := r.FormValue("code")
 	phoneNumber := r.FormValue("phone_number")
 	countryCode := r.FormValue("country_code")
+	fullPhone := fmt.Sprintf("+%s%s", countryCode, phoneNumber)
 
-	reqUrl := "https://api.authy.com/protected/json/phones/verification/check"
+	reqUrl := fmt.Sprintf("https://verify.twilio.com/v2/Services/%s/VerificationCheck", os.Getenv("VERIFY_SERVICE_SID"))
 
-	client := http.Client{Timeout: time.Second * 2}
+	client := &http.Client{}
 
-	req, reqErr := http.NewRequest(
-		http.MethodGet,
-		reqUrl,
-		nil)
+	data := url.Values{}
+	data.Add("Code", code)
+	data.Add("To", fullPhone)
 
-	if reqErr != nil {
-		log.Fatal(reqErr)
-	}
+	req, err := http.NewRequest(http.MethodPost, reqUrl, strings.NewReader(data.Encode()))
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
-	q := req.URL.Query()
-	q.Add("verification_code", code)
-	q.Add("phone_number", phoneNumber)
-	q.Add("country_code", countryCode)
-
-	req.URL.RawQuery = q.Encode()
-
-	req.Header.Add("X-Authy-API-Key", os.Getenv("AUTHY_API_KEY"))
+	ACCOUNT_SID := os.Getenv("TWILIO_ACCOUNT_SID")
+	AUTH_TOKEN := os.Getenv("TWILIO_AUTH_TOKEN")
+	req.SetBasicAuth(ACCOUNT_SID, AUTH_TOKEN)
 
 	res, err := client.Do(req)
 	if err != nil {
@@ -106,20 +107,34 @@ func CheckVerification(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(ioErr)
 	}
 
-	response := VerifyResponse{}
-	jsonErr := json.Unmarshal(bodyBytes, &response)
+	apiResponse := ApiResponse{}
+	jsonErr := json.Unmarshal(bodyBytes, &apiResponse)
 
 	if jsonErr != nil {
-		log.Fatal(jsonErr)
+		log.Print(jsonErr)
 	}
 
-	json.NewEncoder(w).Encode(response)
+	if apiResponse.Status == "approved" {
+		response := &VerifyResponse{"Correct token!", true}
+		json.NewEncoder(w).Encode(response)
+	} else {
+		response := &VerifyResponse{"Incorrect token.", false}
+		json.NewEncoder(w).Encode(response)
+	}
 }
 
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
-		log.Fatal("$PORT must be set")
+		port = "8080"
+	}
+
+	if os.Getenv("VERIFY_SERVICE_SID") == "" {
+		log.Fatal("$VERIFY_SERVICE_SID must be set as an environment variable.")
+	}
+
+	if os.Getenv("TWILIO_ACCOUNT_SID") == "" || os.Getenv("TWILIO_AUTH_TOKEN") == "" {
+		log.Fatal("$TWILIO_ACCOUNT_SID and $TWILIO_AUTH_TOKEN must be set")
 	}
 
 	router := mux.NewRouter()
