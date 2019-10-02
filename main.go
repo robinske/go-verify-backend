@@ -77,7 +77,7 @@ func StartVerification(w http.ResponseWriter, r *http.Request) {
 }
 
 func CheckVerification(w http.ResponseWriter, r *http.Request) {
-	code := r.FormValue("code")
+	code := r.FormValue("verification_code")
 	phoneNumber := r.FormValue("phone_number")
 	countryCode := r.FormValue("country_code")
 	fullPhone := fmt.Sprintf("+%s%s", countryCode, phoneNumber)
